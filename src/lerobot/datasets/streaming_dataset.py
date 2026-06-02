@@ -15,6 +15,7 @@
 # limitations under the License.
 from collections import deque
 from collections.abc import Callable, Generator, Iterable, Iterator
+from typing import Generic, TypeVar
 from pathlib import Path
 
 import datasets
@@ -58,7 +59,9 @@ class LookAheadError(Exception):
     pass
 
 
-class Backtrackable[T]:
+T = TypeVar("T")
+
+class Backtrackable(Generic[T]):
     """
     Wrap any iterator/iterable so you can step back up to `history` items
     and look ahead up to `lookahead` items.
