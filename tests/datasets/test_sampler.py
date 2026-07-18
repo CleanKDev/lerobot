@@ -191,6 +191,56 @@ def test_deterministic_sampler_resume_mid_epoch():
         assert list(resumed) == epoch_1
 
 
+def test_block_shuffle_is_episode_local_and_reproducible():
+    sampler = EpisodeAwareSampler(
+        [0, 5],
+        [5, 10],
+        shuffle=True,
+        shuffle_block_size=3,
+        seed=42,
+    )
+    blocks = ((0, 3), (3, 5), (5, 8), (8, 10))
+    block_order = torch.randperm(4, generator=sampler._epoch_generator(0))
+    expected = [
+        frame
+        for block_index in block_order
+        for frame in range(*blocks[int(block_index)])
+    ]
+
+    assert list(sampler) == expected
+    assert sorted(expected) == list(range(10))
+
+
+def test_block_shuffle_resume_mid_epoch_is_exact():
+    reference = EpisodeAwareSampler(
+        *EPISODE_BOUNDS,
+        shuffle=True,
+        shuffle_block_size=2,
+        seed=42,
+    )
+    epoch_0 = list(reference)
+    for start in (0, 1, 4, len(epoch_0)):
+        resumed = EpisodeAwareSampler(
+            *EPISODE_BOUNDS,
+            shuffle=True,
+            shuffle_block_size=2,
+            seed=42,
+        )
+        resumed.load_state_dict({"epoch": 0, "start_index": start})
+        assert list(resumed) == epoch_0[start:]
+
+
+@pytest.mark.parametrize("block_size", [0, -1])
+def test_invalid_shuffle_block_size_raises(block_size):
+    with pytest.raises(ValueError, match="shuffle_block_size must be > 0"):
+        EpisodeAwareSampler(
+            [0],
+            [10],
+            shuffle=True,
+            shuffle_block_size=block_size,
+        )
+
+
 def test_deterministic_sampler_construction_stores_only_boundaries():
     # Construction is O(num_episodes), not O(num_frames): a million-frame single episode
     # instantiates from just its boundaries without materializing a per-frame index list.

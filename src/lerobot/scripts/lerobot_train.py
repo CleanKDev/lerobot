@@ -423,6 +423,7 @@ def train(cfg: TrainPipelineConfig, accelerator: "Accelerator | None" = None):
             episode_indices_to_use=dataset.episodes,
             drop_n_last_frames=getattr(active_cfg, "drop_n_last_frames", 0),
             shuffle=True,
+            shuffle_block_size=cfg.shuffle_block_size,
             seed=cfg.seed if cfg.seed is not None else 0,
             absolute_to_relative_idx=dataset.absolute_to_relative_idx,
         )

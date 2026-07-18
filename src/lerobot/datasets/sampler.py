@@ -52,6 +52,7 @@ class EpisodeAwareSampler:
         drop_n_first_frames: int = 0,
         drop_n_last_frames: int = 0,
         shuffle: bool = False,
+        shuffle_block_size: int | None = None,
         seed: int = 0,
         absolute_to_relative_idx: dict[int, int] | None = None,
     ):
@@ -63,12 +64,17 @@ class EpisodeAwareSampler:
             drop_n_first_frames: Frames to drop from the start of each episode.
             drop_n_last_frames: Frames to drop from the end of each episode.
             shuffle: Whether to shuffle the indices.
+            shuffle_block_size: When set, shuffle episode-local blocks of this
+                many consecutive frames while preserving order within each
+                block. None retains full per-frame shuffling.
             seed: Seed the permutation is derived from (together with the epoch).
         """
         if drop_n_first_frames < 0:
             raise ValueError(f"drop_n_first_frames must be >= 0, got {drop_n_first_frames}")
         if drop_n_last_frames < 0:
             raise ValueError(f"drop_n_last_frames must be >= 0, got {drop_n_last_frames}")
+        if shuffle_block_size is not None and shuffle_block_size <= 0:
+            raise ValueError(f"shuffle_block_size must be > 0 or None, got {shuffle_block_size}")
 
         from_indices = np.asarray(dataset_from_indices, dtype=np.int64)
         to_indices = np.asarray(dataset_to_indices, dtype=np.int64)
@@ -105,6 +111,7 @@ class EpisodeAwareSampler:
         self._cum_lengths = np.cumsum(lengths[used])
         self._num_frames = int(self._cum_lengths[-1])
         self.shuffle = shuffle
+        self.shuffle_block_size = shuffle_block_size
         self.seed = seed
         self._epoch = 0
         self._start_index = 0
@@ -148,6 +155,37 @@ class EpisodeAwareSampler:
 
     def _iter_epoch(self, epoch: int, start: int) -> Iterator[int]:
         if self.shuffle:
+            if self.shuffle_block_size is not None:
+                blocks: list[tuple[int, int]] = []
+                episode_start = 0
+                for episode_end in self._cum_lengths:
+                    for block_start in range(
+                        episode_start,
+                        int(episode_end),
+                        self.shuffle_block_size,
+                    ):
+                        blocks.append(
+                            (
+                                block_start,
+                                min(
+                                    block_start + self.shuffle_block_size,
+                                    int(episode_end),
+                                ),
+                            )
+                        )
+                    episode_start = int(episode_end)
+                block_order = torch.randperm(
+                    len(blocks),
+                    generator=self._epoch_generator(epoch),
+                )
+                output_position = 0
+                for block_index in block_order:
+                    block_start, block_end = blocks[int(block_index)]
+                    for position in range(block_start, block_end):
+                        if output_position >= start:
+                            yield self._frame_index(position)
+                        output_position += 1
+                return
             order = torch.randperm(self._num_frames, generator=self._epoch_generator(epoch))
             for k in range(start, self._num_frames):
                 yield self._frame_index(int(order[k]))

@@ -101,6 +101,9 @@ class TrainPipelineConfig(HubMixin):
     batch_size: int = 8
     prefetch_factor: int = 4
     persistent_workers: bool = True
+    # Shuffle episode-local blocks while preserving frame order within each
+    # block. None keeps full per-frame shuffling.
+    shuffle_block_size: int | None = None
     steps: int = 100_000
     # Run policy in the simulation environment every N steps to measure reward/success (0 = disabled).
     env_eval_freq: int = 20_000
